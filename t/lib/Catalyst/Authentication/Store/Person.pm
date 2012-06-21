@@ -2,7 +2,7 @@ package Catalyst::Authentication::Store::Person;
 
 use strict;
 use warnings;
-use base qw/Catalyst::Authentication::Store::DBIx::Class/;
+use base qw/Catalyst::Authentication::Store::DBIx::DataModel/;
 
 our $VERSION= "0.01";
 

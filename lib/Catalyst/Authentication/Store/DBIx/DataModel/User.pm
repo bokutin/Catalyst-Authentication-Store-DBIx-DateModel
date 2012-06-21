@@ -1,4 +1,4 @@
-package Catalyst::Authentication::Store::DBIx::Class::User;
+package Catalyst::Authentication::Store::DBIx::DataModel::User;
 
 use Moose;
 use namespace::autoclean;
@@ -7,10 +7,10 @@ extends 'Catalyst::Authentication::User';
 use List::MoreUtils 'all';
 use Try::Tiny;
 
-has 'config'    => (is => 'rw');
-has 'resultset' => (is => 'rw');
-has '_user'     => (is => 'rw');
-has '_roles'    => (is => 'rw');
+has 'config' => (is => 'rw');
+has 'table'  => (is => 'rw');
+has '_user'  => (is => 'rw');
+has '_roles' => (is => 'rw');
 
 sub new {
     my ( $class, $config, $c) = @_;
@@ -19,7 +19,7 @@ sub new {
         unless defined $config->{user_model};
 
     my $self = {
-        resultset => $c->model($config->{'user_model'}),
+        table => $c->model($config->{'user_model'}),
         config => $config,
         _roles => undef,
         _user => undef
@@ -28,21 +28,21 @@ sub new {
     bless $self, $class;
 
     Catalyst::Exception->throw(
-        "\$c->model('${ \$self->config->{user_model} }') did not return a resultset."
+        "\$c->model('${ \$self->config->{user_model} }') did not return a table."
           . " Did you set user_model correctly?"
-    ) unless $self->{resultset};
+    ) unless $self->{table};
 
-    $self->config->{'id_field'} = [$self->{'resultset'}->result_source->primary_columns]
+    $self->config->{'id_field'} = [$self->{'table'}->metadm->primary_key]
         unless exists $self->config->{'id_field'};
 
     $self->config->{'id_field'} = [$self->config->{'id_field'}]
         unless ref $self->config->{'id_field'} eq 'ARRAY';
 
-    Catalyst::Exception->throw(
-        "id_field set to "
-          . join(q{,} => @{ $self->config->{'id_field'} })
-          . " but user table has no column by that name!"
-    ) unless all { $self->{'resultset'}->result_source->has_column($_) } @{ $self->config->{'id_field'} };
+    #Catalyst::Exception->throw(
+    #    "id_field set to "
+    #      . join(q{,} => @{ $self->config->{'id_field'} })
+    #      . " but user table has no column by that name!"
+    #) unless all { $self->{'table'}->result_source->has_column($_) } @{ $self->config->{'id_field'} };
 
     ## if we have lazyloading turned on - we should not query the DB unless something gets read.
     ## that's the idea anyway - still have to work out how to manage that - so for now we always force
@@ -64,41 +64,49 @@ sub new {
 sub load {
     my ($self, $authinfo, $c) = @_;
 
-    my $dbix_class_config = 0;
+    my $dbix_datamodel_config = 0;
 
-    if (exists($authinfo->{'dbix_class'})) {
-        $authinfo = $authinfo->{'dbix_class'};
-        $dbix_class_config = 1;
+    if (exists($authinfo->{'dbix_datamodel'})) {
+        $authinfo = $authinfo->{'dbix_datamodel'};
+        $dbix_datamodel_config = 1;
     }
 
     ## User can provide an arrayref containing the arguments to search on the user class.
-    ## or even provide a prepared resultset, allowing maximum flexibility for user retreival.
-    ## these options are only available when using the dbix_class authinfo hash.
-    if ($dbix_class_config && exists($authinfo->{'result'})) {
-	$self->_user($authinfo->{'result'});
-    } elsif ($dbix_class_config && exists($authinfo->{'resultset'})) {
-        $self->_user($authinfo->{'resultset'}->first);
-    } elsif ($dbix_class_config && exists($authinfo->{'searchargs'})) {
-        $self->_user($self->resultset->search(@{$authinfo->{'searchargs'}})->first);
+    ## or even provide a statement object, allowing maximum flexibility for user retreival.
+    ## these options are only available when using the dbix_datamodel authinfo hash.
+    if ($dbix_datamodel_config && exists($authinfo->{'row'})) {
+	$self->_user($authinfo->{'row'});
+    } elsif ($dbix_datamodel_config && exists($authinfo->{'statement'})) {
+        $self->_user($authinfo->{'statement'}->next);
+    } elsif ($dbix_datamodel_config && exists($authinfo->{'selectargs'})) {
+        $self->_user($self->table->select(@{$authinfo->{'selectargs'}}));
     } else {
         ## merge the ignore fields array into a hash - so we can do an easy check while building the query
         my %ignorefields = map { $_ => 1} @{$self->config->{'ignore_fields_in_find'}};
-        my $searchargs = {};
+        my $selectargs = {};
 
         # now we walk all the fields passed in, and build up a search hash.
         foreach my $key (grep {!$ignorefields{$_}} keys %{$authinfo}) {
-            if ($self->resultset->result_source->has_column($key)) {
-                $searchargs->{$key} = $authinfo->{$key};
-            }
+            $selectargs->{$key} = $authinfo->{$key};
         }
-        if (keys %{$searchargs}) {
-            $self->_user($self->resultset->search($searchargs)->first);
+        if (keys %{$selectargs}) {
+            my $user;
+            eval {
+                $user = $self->table->select(
+                    -where     => $selectargs,
+                    -result_as => "firstrow",
+                );
+            };
+            if ($@) {
+                Catalyst::Exception->throw($@);
+            }
+            $self->_user($user);
         } else {
             Catalyst::Exception->throw(
                 "Failed to load user data.  You passed [" . join(',', keys %{$authinfo}) . "]"
-                  . " to authenticate() but your user source (" .  $self->config->{'user_model'} . ")"
-                  . " only has these columns: [" . join( ",", $self->resultset->result_source->columns ) . "]"
-                  . "   Check your authenticate() call."
+                . " to authenticate() but your user source (" .  $self->config->{'user_model'} . ")"
+                . " only has these columns: [" . $@ . "]"
+                . "   Check your authenticate() call."
             );
         }
     }
@@ -139,16 +147,15 @@ sub roles {
         $self->_roles(\@roles);
     } elsif (exists($self->config->{'role_relation'})) {
         my $relation = $self->config->{'role_relation'};
-        if ($self->_user->$relation->result_source->has_column($self->config->{'role_field'})) {
-            @roles = map {
-                $_->get_column($self->config->{role_field})
-            } $self->_user->$relation->search(undef, {
-                columns => [ $self->config->{role_field} ]
-            })->all;
-            $self->_roles(\@roles);
-        } else {
-            Catalyst::Exception->throw("role table does not have a column called " . $self->config->{'role_field'});
-        }
+        my $field    = $self->config->{'role_field'};
+        @roles = map {
+            $_->can($field)
+                ? $_->$field
+                : exists $_->{$field}
+                ? $_->{$field}
+                : Catalyst::Exception->throw("role table does not have a column called " . $self->config->{'role_field'});
+        } @{$self->_user->$relation};
+        $self->_roles(\@roles);
     } else {
         Catalyst::Exception->throw("user->roles accessed, but no role configuration found");
     }
@@ -164,7 +171,7 @@ sub for_session {
     #my $frozenuser = $self->_user->result_source->schema->freeze( $self->_user );
     #return $frozenuser;
 
-    my %userdata = $self->_user->get_columns();
+    my %userdata = %{ $self->_user->TO_JSON };
 
     # If use_userdata_from_session is set, then store all of the columns of the user obj in the session
     if (exists($self->config->{'use_userdata_from_session'}) && $self->config->{'use_userdata_from_session'} != 0) {
@@ -178,7 +185,7 @@ sub for_session {
 sub from_session {
     my ($self, $frozenuser, $c) = @_;
 
-    #my $obj = $self->resultset->result_source->schema->thaw( $frozenuser );
+    #my $obj = $self->table->result_source->schema->thaw( $frozenuser );
     #$self->_user($obj);
 
     #if (!exists($self->config->{'use_userdata_from_session'}) || $self->config->{'use_userdata_from_session'} == 0) {
@@ -189,14 +196,16 @@ sub from_session {
 #
 ## if use_userdata_from_session is defined in the config, we fill in the user data from the session.
     if (exists($self->config->{'use_userdata_from_session'}) && $self->config->{'use_userdata_from_session'} != 0) {
-        my $obj = $self->resultset->new_result({ %$frozenuser });
-        $obj->in_storage(1);
+        #my $obj = $self->table->new_result({ %$frozenuser });
+        #$obj->in_storage(1);
+        my $obj = $self->table->bless_from_DB({ %$frozenuser });
         $self->_user($obj);
         return $self;
     }
 
     if (ref $frozenuser eq 'HASH') {
-        return $self->load({
+  
+      return $self->load({
             map { ($_ => $frozenuser->{$_}) }
             @{ $self->config->{id_field} }
         }, $c);
@@ -211,9 +220,8 @@ sub get {
     if (my $code = $self->_user->can($field)) {
         return $self->_user->$code;
     }
-    elsif (my $accessor =
-         try { $self->_user->result_source->column_info($field)->{accessor} }) {
-        return $self->_user->$accessor;
+    elsif (exists $self->_user->{$field}) {
+        return $self->_user->{$field};
     } else {
         # XXX this should probably throw
         return undef;
@@ -238,7 +246,7 @@ sub obj {
 
 sub auto_create {
     my $self = shift;
-    $self->_user( $self->resultset->auto_create( @_ ) );
+    $self->_user( $self->table->auto_create( @_ ) );
     return $self;
 }
 
@@ -270,10 +278,10 @@ sub AUTOLOAD {
     if (my $code = $self->_user->can($method)) {
         return $self->_user->$code(@_);
     }
-    elsif (my $accessor =
-         try { $self->_user->result_source->column_info($method)->{accessor} }) {
-        return $self->_user->$accessor(@_);
-    } else {
+    elsif ( exists $self->_user->{$method} ) {
+        return $self->_user->{$method};
+    }
+    else {
         # XXX this should also throw
         return undef;
     }
@@ -292,7 +300,7 @@ module.
 
 =head1 VERSION
 
-This documentation refers to version 0.1503.
+This documentation refers to version 0.01.
 
 =head1 SYNOPSIS
 
@@ -351,7 +359,7 @@ Synonym for get_object
 
 This is called when the auto_create_user option is turned on in
 Catalyst::Plugin::Authentication and a user matching the authinfo provided is not found.
-By default, this will call the C<auto_create()> method of the resultset associated
+By default, this will call the C<auto_create()> method of the table associated
 with this object. It is up to you to implement that method.
 
 =head2 auto_update
@@ -364,7 +372,7 @@ user search process. Otherwise the information will most likely cause the user
 record to not be found. To ignore fields in the search process, you
 have to add the fields you wish to update to the 'ignore_fields_in_find'
 authinfo element.  Alternately, you can use one of the advanced row retrieval
-methods (searchargs or resultset).
+methods (selectargs or table).
 
 By default, auto_update will call the C<auto_update()> method of the
 DBIx::Class::Row object associated with the user. It is up to you to implement

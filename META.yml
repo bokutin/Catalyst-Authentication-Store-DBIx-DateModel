@@ -1,19 +1,18 @@
 ---
-abstract: 'A storage class for Catalyst Authentication using DBIx::Class'
-author:
-  - 'Jason Kuri (jayk@cpan.org)'
+abstract: ~
 build_requires:
-  ExtUtils::MakeMaker: 6.42
+  ExtUtils::MakeMaker: 6.62
   Test::More: 0
 configure_requires:
-  ExtUtils::MakeMaker: 6.42
+  ExtUtils::MakeMaker: 6.62
 distribution_type: module
-generated_by: 'Module::Install version 1.02'
-license: perl
+dynamic_config: 1
+generated_by: 'Module::Install version 1.04'
+license: unknown
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
   version: 1.4
-name: Catalyst-Authentication-Store-DBIx-Class
+name: Catalyst-Authentication-Store-DBIx-DataModel
 no_index:
   directory:
     - inc
@@ -21,22 +20,16 @@ no_index:
 provides:
   Catalyst::Authentication::Realm::SimpleDB:
     file: lib/Catalyst/Authentication/Realm/SimpleDB.pm
-  Catalyst::Authentication::Store::DBIx::Class:
-    file: lib/Catalyst/Authentication/Store/DBIx/Class.pm
-    version: 0.1503
-  Catalyst::Authentication::Store::DBIx::Class::User:
-    file: lib/Catalyst/Authentication/Store/DBIx/Class/User.pm
 requires:
-  Catalyst::Model::DBIC::Schema: 0.18
+  Catalyst::Model::DBIDM: 0
   Catalyst::Plugin::Authentication: 0.10008
   Catalyst::Runtime: 5.8
-  DBIx::Class: 0.08
+  DBIx::DataModel: 0
   List::MoreUtils: 0
   Moose: 0
   Try::Tiny: 0
   namespace::autoclean: 0
   perl: 5.8.1
 resources:
-  license: http://dev.perl.org/licenses/
-  repository: git://git.shadowcat.co.uk/catagits/Catalyst-Authentication-Store-DBIx-Class.git
-version: 0.1503
+  repository: git@github.com:bokutin/Catalyst-Authentication-Store-DBIx-DateModel.git
+version: 0.01

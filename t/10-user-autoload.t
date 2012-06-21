@@ -1,7 +1,7 @@
 use strict;
 use warnings;
 use Test::More;
-use Catalyst::Authentication::Store::DBIx::Class::User;
+use Catalyst::Authentication::Store::DBIx::DataModel::User;
 
 my $message = 'I exist';
 
@@ -13,7 +13,7 @@ my $message = 'I exist';
 
 my $o = bless({
   _user => bless({}, 'My::Test'),
-}, 'Catalyst::Authentication::Store::DBIx::Class::User');
+}, 'Catalyst::Authentication::Store::DBIx::DataModel::User');
 
 is($o->exists, $message, 'AUTOLOAD proxies ok');
 

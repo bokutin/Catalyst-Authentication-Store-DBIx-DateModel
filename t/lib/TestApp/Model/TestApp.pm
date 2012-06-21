@@ -1,7 +1,9 @@
 package TestApp::Model::TestApp;
 
-use base qw/Catalyst::Model::DBIC::Schema/;
-use strict;
+use Moose;
+extends qw(Catalyst::Model::DBIDM);
+
+use TestApp::DataModel;
 
 my @deployment_statements = split /;/, q{
     CREATE TABLE user (
@@ -35,18 +37,31 @@ my @deployment_statements = split /;/, q{
 };
 
 __PACKAGE__->config(
-    schema_class => 'TestApp::Schema',
-    connect_info => [
-        "dbi:SQLite:dbname=:memory:",
-        '',
-        '',
-        { AutoCommit => 1 },
-        { on_connect_do => \@deployment_statements },
-    ],
+    schema_class => 'TestApp::DataModel::Schema',
+    use_singleton => 0,
 );
 
-# Load all of the classes
-#__PACKAGE__->load_classes(qw/Role User UserRole/);
+my $schema;
+override get_schema_instance => sub {
+    my ($self, $c, $schema_class) = @_;
 
+    $schema ||= do {
+        use DBI;
+        my $dbh = DBI->connect(
+            "dbi:SQLite:dbname=:memory:",
+            '',
+            '',
+            { AutoCommit => 1, RaiseError => 1 },
+        );
+
+        for (@deployment_statements) {
+            $dbh->do($_) or die $dbh->errstr;
+        }
+
+        $schema_class->new(
+            dbh => $dbh,
+        );
+    };
+};
 
 1;

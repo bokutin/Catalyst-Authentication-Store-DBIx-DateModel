@@ -17,9 +17,9 @@ BEGIN {
         or plan skip_all =>
         "DBD::SQLite is required for this test";
 
-    eval { require DBIx::Class }
+    eval { require DBIx::DataModel }
         or plan skip_all =>
-        "DBIx::Class is required for this test";
+        "DBIx::DataModel is required for this test";
 
     eval { require Catalyst::Plugin::Session;
            die unless $Catalyst::Plugin::Session::VERSION >= 0.02 }
@@ -45,7 +45,7 @@ BEGIN {
                         'password_type' => 'clear'
                     },
                     store => {
-                        'class' => 'DBIx::Class',
+                        'class' => 'DBIx::DataModel',
                         'user_model' => 'TestApp::User',
                         'use_userdata_from_session' => 0,
                     },

@@ -58,11 +58,17 @@ sub searchargs_login : Global {
 
     $c->authenticate({
                         password => $c->request->params->{'password'},
-                        dbix_class => {
-                            searchargs => [ { "-or" => [ username => $username,
-                                                        email => $email ]},
-                                            { prefetch => qw/ map_user_role /}
-                                          ]
+                        #dbix_class => {
+                        #    searchargs => [ { "-or" => [ username => $username,
+                        #                                email => $email ]},
+                        #                    { prefetch => qw/ map_user_role /}
+                        #                  ]
+                        #},
+                        dbix_datamodel => {
+                            selectargs => [
+                                -where     => { "-or" => [ username => $username, email => $email ] },
+                                -result_as => "firstrow",
+                            ]
                         }
                      });
 
@@ -80,19 +86,20 @@ sub searchargs_login : Global {
 sub result_login : Global {
     my ($self, $ctx) = @_;
 
-    my $user = $ctx->model('TestApp::User')->find({
-        email => $ctx->request->params->{email},
-    });
+    my $user = $ctx->model('TestApp::User')->select(
+        -where => { email => $ctx->request->params->{email} },
+        -result_as => "firstrow",
+    );
 
-    if ($user->password_accessor ne $ctx->request->params->{password}) {
+    if ($user->{password} ne $ctx->request->params->{password}) {
         $ctx->response->status(403);
         $ctx->response->body('password mismatch');
         $ctx->detach;
     }
 
     $ctx->authenticate({
-        dbix_class => { result => $user },
-        password   => $ctx->request->params->{password},
+        dbix_datamodel => { row => $user },
+        password       => $ctx->request->params->{password},
     });
 
     if ($ctx->user_exists) {
@@ -110,12 +117,16 @@ sub resultset_login : Global {
     my $email = $c->request->params->{'email'} || '';
 
 
-    my $rs = $c->model('TestApp::User')->search({ "-or" => [ username => $username,
-                                                              email => $email ]});
+    #my $rs = $c->model('TestApp::User')->search({ "-or" => [ username => $username,
+    #                                                          email => $email ]});
+    my $stmt = $c->model('TestApp::User')->select(
+        -where     => { "-or" => [ username => $username, email => $email ] },
+        -result_as => "statement",
+    );
 
     $c->authenticate({
                         password => $c->request->params->{'password'},
-                        dbix_class => { resultset => $rs }
+                        dbix_datamodel => { statement => $stmt },
                      });
 
     if ( $c->user_exists ) {

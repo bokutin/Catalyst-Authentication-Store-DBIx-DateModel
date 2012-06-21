@@ -14,7 +14,7 @@ sub new {
             password_type => 'clear'
         },
         store => {
-            class => 'DBIx::Class',
+            class => 'DBIx::DataModel',
             role_relation => 'roles',
             role_field => 'role',
             use_userdata_from_session => '1'
